@@ -372,21 +372,6 @@ def numeric_send(d, **kwargs):
         i += DEC_DIGITS
 
     # strip_var()
-    for char in digits:
-        if ndigits == 0: break
-        if char == '0':
-            weight -= 1
-            ndigits -= 1
-        else:
-            break
-
-    for char in reversed(digits):
-        if ndigits == 0: break
-        if char == '0':
-            ndigits -= 1
-        else:
-            break
-
     if ndigits == 0:
         sign = 0x4000 # pos
         weight = 0
