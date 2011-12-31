@@ -441,13 +441,14 @@ def array_recv(data, **kwargs):
     # Read all array values
     array_values = []
     for i in range(element_count):
-        element_len, = struct.unpack("!i", data[:4])
-        data = data[4:]
-        if element_len == -1:
-            array_values.append(None)
-        else:
-            array_values.append(conversion(data[:element_len], **kwargs))
-            data = data[element_len:]
+        if len(data):
+            element_len, = struct.unpack("!i", data[:4])
+            data = data[4:]
+            if element_len == -1:
+                array_values.append(None)
+            else:
+                array_values.append(conversion(data[:element_len], **kwargs))
+                data = data[element_len:]
     if data != "":
         raise ArrayDataParseError("unexpected data left over after array read")
 

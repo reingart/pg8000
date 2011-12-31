@@ -189,6 +189,19 @@ class Tests(unittest.TestCase):
                 assert next_f1 > f1
                 f1 = next_f1
 
+    def testEmptyArray(self):
+        with closing(db2.cursor()) as c1:
+            c1.execute("SELECT ARRAY[1,2,3, NULL];")
+            retval = c1.fetchone()
+            self.assert_(len(retval[0]) == 4, 
+                         "%s is not a valid array" % repr(retval[0]))
+            for i, value in enumerate((1, 2, 3, None)):
+                self.assertEquals(value, retval[0][i])
+            c1.execute("SELECT '{}'::text[];")
+            retval = c1.fetchone()
+            self.assert_(len(retval[0]  ) == 0, 
+                         "%s is not an empty array" % repr(retval))
+
 
 if __name__ == "__main__":
     unittest.main()
