@@ -3,6 +3,7 @@ from __future__ import with_statement
 import unittest
 import pg8000
 import datetime
+import decimal
 from contextlib import closing, nested
 from .connection_settings import db_connect
 
@@ -201,6 +202,26 @@ class Tests(unittest.TestCase):
             retval = c1.fetchone()
             self.assert_(len(retval[0]  ) == 0, 
                          "%s is not an empty array" % repr(retval))
+
+
+    def testDecimalNumeric(self):
+        with closing(db2.cursor()) as c1:
+            # On the other hand, this simple select returns 0.2600:
+            test_dec_val = decimal.Decimal('0.260')
+            c1.execute('SELECT %s', [test_dec_val])
+            retval = c1.fetchone()
+            self.assertEquals(retval[0], test_dec_val)
+            
+            #Table schema: 
+            c1.execute('CREATE TEMP TABLE foo_dec_num1 (a NUMERIC);')
+            
+            # I'd expect that 0.26 is stored in table foo, but psql shows it as 0.
+            c1.execute('INSERT INTO foo_dec_num1 VALUES (%s)', [test_dec_val])
+            db2.commit()
+            c1.execute('SELECT a::TEXT FROM foo_dec_num1')
+            retval = c1.fetchone()
+            print retval
+            self.assertEquals(retval[0], str(test_dec_val))
 
 
 if __name__ == "__main__":
