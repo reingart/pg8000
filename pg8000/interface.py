@@ -439,6 +439,7 @@ class Connection(Cursor):
         self._rollback = PreparedStatement(self, "ROLLBACK TRANSACTION")
         self._unnamed_prepared_statement_lock = threading.RLock()
         self.in_transaction = False
+        self.autocommit = False
 
     ##
     # An event handler that is fired when NOTIFY occurs for a notification that
@@ -491,6 +492,8 @@ class Connection(Cursor):
     def begin(self):
         if self.is_closed:
             raise ConnectionClosedError()
+        if self.autocommit:
+            return
         self._begin.execute()
         self.in_transaction = True
 

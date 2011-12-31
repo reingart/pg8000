@@ -482,6 +482,9 @@ class ConnectionWrapper(object):
         self.notifies_lock = threading.Lock()
         self.conn.NotificationReceived += self._notificationReceived
 
+    def autocommit(self, state):
+        self.conn.autocommit = state
+
     @require_open_connection
     def begin(self):
         self.conn.begin()
