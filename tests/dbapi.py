@@ -225,7 +225,9 @@ class Tests(unittest.TestCase):
 
     def testAutocommitCreateDatabase(self):
         # Forced transactions prevent CREATE DATABASE (needs autocommit)
-        db2.autocommit(True)
+        # per dbapi spec, autocommit should be initially disabled
+        self.assertEquals(db2.autocommit, False)
+        db2.autocommit = True
         db2.rollback()
         with closing(db2.cursor()) as c1:
             c1.execute('CREATE DATABASE FOOFOOFOOFOO')
@@ -233,6 +235,7 @@ class Tests(unittest.TestCase):
         # this should not throw ProgrammingError: 
         # ('ERROR', '25001', 
         #  'CREATE DATABASE cannot run inside a transaction block')
+        db2.autocommit = False
 
 
 if __name__ == "__main__":
