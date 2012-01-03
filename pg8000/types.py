@@ -677,6 +677,7 @@ pg_types = {
     23: {"bin_in": int4recv},
     25: {"bin_in": varcharin}, # TEXT type
     26: {"txt_in": numeric_in}, # oid type
+    142: {"bin_in": varcharin}, # XML
     194: {"bin_in": varcharin}, # "string representing an internal node tree"
     700: {"bin_in": float4recv},
     701: {"bin_in": float8recv},

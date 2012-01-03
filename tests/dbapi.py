@@ -223,6 +223,12 @@ class Tests(unittest.TestCase):
             print retval
             self.assertEquals(retval[0], str(test_dec_val))
 
+    def testXML(self):
+        with closing(db2.cursor()) as c1:
+            c1.execute("SELECT '<nothing/>'::xml;")
+            retval = c1.fetchone()
+            self.assertEquals(retval[0], "<nothing/>")
+
     def testAutocommitCreateDatabase(self):
         # Forced transactions prevent CREATE DATABASE (needs autocommit)
         db2.autocommit(True)
