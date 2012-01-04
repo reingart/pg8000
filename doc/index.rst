@@ -19,25 +19,32 @@ modified BSD license.
 Download
 ========
 
-The latest release of pg8000 is version 1.08, released on June 8th, 2010.
+The latest "maintenance" (forked) release of pg8000 is version 1.09, released on January 4th, 2012.
+The latest "official" release of pg8000 is version 1.08, released on June 8th, 2010.
 
 Python 2
 --------
 
-* `pg8000-1.08.tar.gz <dist/pg8000-1.08.tar.gz>`_
-* `pg8000-1.08.zip <dist/pg8000-1.08.zip>`_
+* `pg8000-1.09.tar.gz <http://pg8000.googlecode.com/files//pg8000-1.09.tar.gz>`_
+* `pg8000-1.09.zip <http://pg8000.googlecode.com/files//pg8000-1.09.zip>`_
 
 Python 3
 --------
 
-* `pg8000-py3-1.08.tar.gz <dist/pg8000-py3-1.08.tar.gz>`_
-* `pg8000-py3-1.08.zip <dist/pg8000-py3-1.08.zip>`_
+* comming soon...
 
-Git Source Repository
----------------------
+Maintenance Mercurial Source Repository
+---------------------------------------
+
+* https://code.google.com/p/pg8000
+
+Original git repository:
+------------------------
 
 * http://github.com/mfenniak/pg8000/tree/trunk
 * http://github.com/mfenniak/pg8000/tree/py3
+
+
 
 Documentation
 =============
