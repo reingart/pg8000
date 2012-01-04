@@ -251,7 +251,7 @@ DBAPI Objects
 
         .. versionadded:: 1.09
 
-    .. method:: tpc_commit(xid)
+    .. method:: tpc_commit(xid=None)
 
         Commits a TPC transaction previously prepared with tpc_prepare().
         If Transaction ID xid is not given, currently started TPC ID is used.
@@ -268,7 +268,7 @@ DBAPI Objects
 
         .. versionadded:: 1.09
 
-    .. method:: tpc_rollback(xid)
+    .. method:: tpc_rollback(xid=None)
 
         Rolls back a TPC transaction previously prepared with tpc_prepare().
         If Transaction ID xid is not given, currently started TPC ID is used.
@@ -285,7 +285,7 @@ DBAPI Objects
 
         .. versionadded:: 1.09
 
-    .. method:: tpc_recover(xid)
+    .. method:: tpc_recover()
 
         Returns a list of all currently available prepared transaction's xid
         (listed in the pg_prepared_xacts 
