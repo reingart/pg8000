@@ -25,8 +25,8 @@ The latest "official" release of pg8000 is version 1.08, released on June 8th, 2
 Python 2
 --------
 
-* `pg8000-1.09.tar.gz <http://pg8000.googlecode.com/files//pg8000-1.09.tar.gz>`_
-* `pg8000-1.09.zip <http://pg8000.googlecode.com/files//pg8000-1.09.zip>`_
+* `pg8000-1.09.tar.gz <http://pg8000.googlecode.com/files/pg8000-1.09.tar.gz>`_
+* `pg8000-1.09.zip <http://pg8000.googlecode.com/files/pg8000-1.09.zip>`_
 
 Python 3
 --------
