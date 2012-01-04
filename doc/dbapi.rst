@@ -45,13 +45,7 @@ DBAPI Properties
             printf format codes, eg. ``WHERE name=%s``
         pyformat
             Python format codes, eg. ``WHERE name=%(paramname)s``
-
-.. attribute:: paramstyle
-
-    String property containing the database version as reported by the server.
-
-    This is an extension to the DBAP specification.
-
+            
 .. attribute:: STRING
 .. attribute:: BINARY
 .. attribute:: NUMBER
@@ -248,6 +242,28 @@ DBAPI Objects
         extension.
 
         .. versionadded:: 1.07
+
+    .. attribute:: server_version
+
+        String property containing the database version as reported by the server.
+
+        This is an extension to the DBAPI specification; it is a pg8000
+        extension.
+
+        .. versionadded:: 1.09
+
+    .. attribute:: autocommit
+        
+        Boolean property to enable or disable the auto-commit feature.
+        Per DBAPI specification, this must be initially off (False), so the 
+        application should call :meth:`~pg8000.dbapi.ConnectionWrapper.commit`.
+        If this attribute is set to True, no enclosing transaction will be 
+        automatically started when executing a database operation. Instead, each 
+        statement will be "committed" implicitly immediately when executed.
+        This behaviour is required by some PostgreSQL commands like CREATE
+        DATABASE or VACUUM that cannot run inside a transaction block.
+
+        .. versionadded:: 1.09
 
     .. attribute:: Error
                    Warning
