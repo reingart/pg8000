@@ -4,6 +4,16 @@ Release History
 Version 1.09, 2012-01-03
 ------------------------
 
+- Added Two Phase Commit support, methods: 
+  :meth:`~pg8000.dbapi.ConnectionWrapper.xid`, 
+  :meth:`~pg8000.dbapi.ConnectionWrapper.tpc_begin`,
+  :meth:`~pg8000.dbapi.ConnectionWrapper.tpc_prepare`,
+  :meth:`~pg8000.dbapi.ConnectionWrapper.tpc_commit`,
+  :meth:`~pg8000.dbapi.ConnectionWrapper.tpc_rollback`, and 
+  :meth:`~pg8000.dbapi.ConnectionWrapper.tpc_recover`, based on prior TPC 
+  connection wrapper for psycopg2 developed originally for 
+  `pyreplica <http://pgfoundry.org/projects/pyreplica/>`_
+  
 - Added :attr:`~pg8000.dbapi.ConnectionWrapper.autocommit` attribute to avoid
   to send a BEGIN automatically. This is needed for some commands (e.g. CREATE 
   DATABASE, VACUUM...) that require to be run outside any transaction.

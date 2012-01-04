@@ -579,6 +579,9 @@ class ConnectionWrapper(object):
         # set auto-commit mode to begin a TPC transaction
         self.autocommit = False
         # (actually in postgres at this point it is a normal one)
+        if self.conn.in_transaction:
+            warn("tpc_begin() should be called outside a transaction block", 
+                 stacklevel=3)
         self.conn.begin()
         # store actual TPC transaction id
         self.__tpc_xid = xid
@@ -598,7 +601,8 @@ class ConnectionWrapper(object):
             self.__tpc_prepared = True
         finally:
             curs.close()
-
+    
+    @require_open_connection
     def tpc_commit(self, xid=None):
         "Commit a prepared two-phase transaction"
         try:
@@ -638,6 +642,7 @@ class ConnectionWrapper(object):
             # transaction is done, clear xid
             self.__tpc_xid = None
 
+    @require_open_connection
     def tpc_rollback(self, xid=None):
         "Commit a prepared two-phase transaction"
         try:
@@ -675,6 +680,7 @@ class ConnectionWrapper(object):
             # transaction is done, clear xid
             self.__tpc_xid = None
 
+    @require_open_connection
     def tpc_recover(self):
         "Returns a list of pending transaction IDs"
         previous_autocommit_mode = self.autocommit 
