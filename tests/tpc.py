@@ -78,13 +78,13 @@ class TwoPhaseTests(unittest.TestCase):
             err=True
         if err:
             raise RuntimeError("Unhandled prepared TPC transaction")
-        self.curs.execute("DELETE FROM table1")
+        self.curs.execute("DELETE FROM tpc_test_table_1")
        
     def insert(self):
-        self.curs.execute("INSERT INTO table1 (data) VALUES (%s)", ('1234', ))
+        self.curs.execute("INSERT INTO tpc_test_table_1 (data) VALUES (%s)", ('1234', ))
         
     def rowcount(self):
-        self.curs.execute("SELECT * FROM table1 ")
+        self.curs.execute("SELECT * FROM tpc_test_table_1 ")
         return self.curs.rowcount
         
     def test_one_phase_commit(self):
