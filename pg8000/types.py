@@ -681,6 +681,7 @@ pg_types = {
     194: {"bin_in": varcharin}, # "string representing an internal node tree"
     700: {"bin_in": float4recv},
     701: {"bin_in": float8recv},
+    705: {"txt_in": varcharin}, # UNKNOWN
     829: {"txt_in": varcharin}, # MACADDR type
     1000: {"bin_in": array_recv}, # BOOL[]
     1003: {"bin_in": array_recv}, # NAME[]
