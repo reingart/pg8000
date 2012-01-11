@@ -37,6 +37,25 @@ class Tests(unittest.TestCase):
         with closing(dbapi.connect(**db_connect)) as db:
             self.assertRegexpMatches(db.server_version, r'\d{1,2}\.\d(\.\d)?')
 
+    def testConnInfo(self):
+        opts = dbapi.interface.conninfo_parse("   ")
+        self.assertEquals(opts, {})
+        opts = dbapi.interface.conninfo_parse("dbname = postgres")
+        self.assertEquals(opts, {'dbname': 'postgres'})
+        opts = dbapi.interface.conninfo_parse("dbname=postgres user=mariano password=secret host=localhost port=5432")
+        self.assertEquals(opts, {'dbname': 'postgres', 'user': 'mariano', 'password': 'secret', 'host': 'localhost', 'port': '5432'})
+        dsn = r"   user=mariano host  ='saraza\'.com' port= 5433   dbname='my crazy db' password=abra\'cadabra sslmode =  prefer  "
+        opts = dbapi.interface.conninfo_parse(dsn)
+        self.assertEquals(opts, {'dbname': 'my crazy db',
+                'user': 'mariano', 'password': "abra'cadabra",
+                'host': "saraza'.com", 'port': "5433", 'sslmode': 'prefer'
+                                 })
+
+    def testConnectDSN(self):
+        dsn = "dbname=%(database)s user=%(user)s password=%(password)s host=%(host)s port=%(port)s"
+        dbapi.connect(dsn % db_connect)
+        
+                                 
 if __name__ == "__main__":
     unittest.main()
 

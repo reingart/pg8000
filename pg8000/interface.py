@@ -34,6 +34,36 @@ import protocol
 import threading
 from errors import *
 
+def conninfo_parse(conninfo):
+    "Conninfo parser routine based on libpq conninfo_parse"
+    options = {}
+    buf = conninfo + " "
+    tmp = pname = ""
+    quoted_string = False
+    cp = 0
+    while cp < len(buf):
+        # Skip blanks before the parameter name
+        c = buf[cp]
+        if c.isspace() and tmp and not quoted_string and pname:
+            options[pname] = tmp
+            tmp = pname = ""
+        elif c == "'":
+            quoted_string = not quoted_string
+        elif c == '\\':
+            cp += 1
+            tmp += buf[cp]      
+        elif c == "=":
+            if not tmp:
+                raise RuntimeError("missing parameter name (conninfo:%s)" % cp)
+            pname = tmp
+            tmp = ""
+        elif not c.isspace() or quoted_string:
+            tmp += c
+        cp += 1
+    if quoted_string:
+        raise RuntimeError("unterminated quoted string (conninfo:%s)" % cp)
+    return options
+
 class DataIterator(object):
     def __init__(self, obj, func):
         self.obj = obj
@@ -491,8 +521,17 @@ class Cursor(object):
 #
 # @keyparam ssl     Use SSL encryption for TCP/IP socket.  Defaults to False.
 class Connection(Cursor):
-    def __init__(self, user, host=None, unix_sock=None, port=5432, database=None, password=None, socket_timeout=60, ssl=False):
+    def __init__(self, dsn="", user=None, host=None, unix_sock=None, port=5432, database=None, password=None, socket_timeout=60, ssl=False):
         self._row_desc = None
+        if dsn:
+            # update connection parameters parsed of the conninfo dsn
+            opts = conninfo_parse(dsn)
+            database = opts.get("dbname", database)
+            user = opts.get("user", user)
+            password = opts.get("password", user)
+            host = opts.get("host", host)
+            port = int(opts.get("port", port))
+            ssl = opts.get("sslmode", 'disable') != 'disable'
         try:
             self.c = protocol.Connection(unix_sock=unix_sock, host=host, port=port, socket_timeout=socket_timeout, ssl=ssl)
             self.c.authenticate(user, password=password, database=database)

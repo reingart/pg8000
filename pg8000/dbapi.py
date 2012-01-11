@@ -236,6 +236,7 @@ def convert_paramstyle(src_style, query, args):
 
     return output_query, tuple(output_args)
 
+    
 def require_open_cursor(fn):
     def _fn(self, *args, **kwargs):
         if self.cursor == None:
@@ -743,8 +744,8 @@ class ConnectionWrapper(object):
 # @keyparam ssl     Use SSL encryption for TCP/IP socket.  Defaults to False.
 #
 # @return An instance of {@link #ConnectionWrapper ConnectionWrapper}.
-def connect(user, host=None, unix_sock=None, port=5432, database=None, password=None, socket_timeout=60, ssl=False):
-    return ConnectionWrapper(user=user, host=host,
+def connect(dsn="", user=None, host=None, unix_sock=None, port=5432, database=None, password=None, socket_timeout=60, ssl=False):
+    return ConnectionWrapper(dsn=dsn, user=user, host=host,
             unix_sock=unix_sock, port=port, database=database,
             password=password, socket_timeout=socket_timeout, ssl=ssl)
 

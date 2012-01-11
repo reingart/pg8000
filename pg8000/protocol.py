@@ -1340,7 +1340,10 @@ class Connection(object):
             self._integer_datetimes = (msg.value == "on")
         elif msg.key == "server_version":
             self._server_version = msg.value
-
+        else:
+            ##print "_onParameterStatusReceived ", msg.key, msg.value
+            pass
+            
     def handleNoticeResponse(self, msg):
         self.NoticeReceived(msg)
 
