@@ -30,6 +30,9 @@ import getpass
 import os
 import sys
 
+# Connection setting example for windows:
+# SET PG8000_TEST=dict(host='192.168.248.3',port=5432,user='pg8000',password='',database='pg8000')
+        
 if "PG8000_TEST" in os.environ:
     db_connect = eval(os.environ["PG8000_TEST"])
 else:
