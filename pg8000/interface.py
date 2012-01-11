@@ -257,6 +257,64 @@ class PreparedStatement(object):
     def iterate_dict(self):
         return DataIterator(self, PreparedStatement.read_dict)
 
+
+class SimpleStatement(PreparedStatement):
+    "Internal wrapper to Simple Query protocol emulating a PreparedStatement"
+    
+    # This should be used internally only for trivial queries 
+    # (not a true Prepared Statement, in fact it can have multiple statements)
+    # See Simple Query Protocol limitations and trade-offs (send_simple_query)
+    
+    row_cache_size = None
+
+    def __init__(self, connection, statement):
+        if connection == None or connection.c == None:
+            raise InterfaceError("connection not provided")
+        self.c = connection.c
+        self._row_desc = None
+        self._cached_rows = []
+        self._ongoing_row_count = -1
+        self._command_complete = True
+        self.statement = statement
+        self._lock = threading.RLock()
+
+    def close(self):
+        # simple query doesn't have portals
+        pass
+
+    def execute(self, *args, **kwargs):
+        "Run the SQL simple query stataments"
+        self._lock.acquire()
+        try:
+            self._row_desc, cmd_complete, self._cached_rows = \
+                self.c.send_simple_query(self.statement, kwargs.get("stream"))
+            self._command_complete = True
+            self._ongoing_row_count = -1
+            if cmd_complete is not None and cmd_complete.rows is not None:
+                self._ongoing_row_count = cmd_complete.rows
+        finally:
+            self._lock.release()
+
+    def _fill_cache(self):
+        # data rows are already fetched in _cached_rows
+        pass
+
+    def _fetch(self):
+        if not self._row_desc:
+            raise ProgrammingError("no result set")
+        self._lock.acquire()
+        try:
+            if not self._cached_rows:
+                return None
+            row = self._cached_rows.pop(0)
+            return tuple(row)
+        finally:
+            self._lock.release()
+
+    def _get_row_count(self):
+        return self._ongoing_row_count
+
+
 ##
 # The Cursor class allows multiple queries to be performed concurrently with a
 # single PostgreSQL connection.  The Cursor object is implemented internally by
@@ -300,7 +358,14 @@ class Cursor(object):
             raise ConnectionClosedError()
         self.connection._unnamed_prepared_statement_lock.acquire()
         try:
-            self._stmt = PreparedStatement(self.connection, query, statement_name="", *[{"type": type(x), "value": x} for x in args])
+            if kwargs.get("simple_query"):
+                # no arguments and no statement name, 
+                # use PostgreSQL Simple Query Protocol
+                ## print "SimpleQuery:", query
+                self._stmt = SimpleStatement(self.connection, query)
+            else:
+                # use PostgreSQL Extended Query Protocol
+                self._stmt = PreparedStatement(self.connection, query, statement_name="", *[{"type": type(x), "value": x} for x in args])
             self._stmt.execute(*args, **kwargs)
         finally:
             self.connection._unnamed_prepared_statement_lock.release()
@@ -550,3 +615,7 @@ class Connection(Cursor):
     # Raises InterfaceError if no version has been reported from the server.
     def server_version(self):
         return self.c.server_version()
+
+    def encoding(self, encoding=None):
+        "Returns the client_encoding as reported from the connected server"
+        return self.c.encoding()

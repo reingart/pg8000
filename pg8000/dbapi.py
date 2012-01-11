@@ -565,7 +565,15 @@ class ConnectionWrapper(object):
     def server_version(self):
         return self.conn.server_version()
 
+    # Stability: psycopg2 compatibility
+    @require_open_connection
+    def set_client_encoding(self, encoding=None):
+        "Set the client encoding for the current session"
+        if encoding:
+            self.conn.execute("SET client_encoding TO '%s';" % (encoding, ), simple_query=True)
+        return self.conn.encoding()
 
+        
     def xid(self,format_id, global_transaction_id, branch_qualifier):
         """Create a Transaction IDs (only global_transaction_id is used in pg)
         format_id and branch_qualifier are not used in postgres

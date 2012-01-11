@@ -674,10 +674,10 @@ pg_types = {
     19: {"bin_in": varcharin}, # name type
     20: {"bin_in": int8recv},
     21: {"bin_in": int2recv},
-    23: {"bin_in": int4recv},
-    25: {"bin_in": varcharin}, # TEXT type
+    23: {"bin_in": int4recv, "txt_in": numeric_in},
+    25: {"bin_in": varcharin, "txt_in": varcharin}, # TEXT type
     26: {"txt_in": numeric_in}, # oid type
-    142: {"bin_in": varcharin}, # XML
+    142: {"bin_in": varcharin, "txt_in": varcharin}, # XML
     194: {"bin_in": varcharin}, # "string representing an internal node tree"
     700: {"bin_in": float4recv},
     701: {"bin_in": float8recv},
@@ -685,7 +685,7 @@ pg_types = {
     1000: {"bin_in": array_recv}, # BOOL[]
     1003: {"bin_in": array_recv}, # NAME[]
     1005: {"bin_in": array_recv}, # INT2[]
-    1007: {"bin_in": array_recv}, # INT4[]
+    1007: {"bin_in": array_recv, "txt_in": varcharin}, # INT4[]
     1009: {"bin_in": array_recv}, # TEXT[]
     1014: {"bin_in": array_recv}, # CHAR[]
     1015: {"bin_in": array_recv}, # VARCHAR[]

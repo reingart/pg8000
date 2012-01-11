@@ -242,6 +242,17 @@ class Tests(unittest.TestCase):
         #  'VACUUM cannot run inside a transaction block')
         db2.autocommit = False
 
+    def testSetClientEncoding(self):
+        # get default client encoding
+        old_client_encoding = db2.set_client_encoding()
+        # change it
+        new_client_encoding = db2.set_client_encoding("latin1")
+        self.assertEquals(new_client_encoding, 'iso8859-1')
+        # restore it
+        new_client_encoding = db2.set_client_encoding(old_client_encoding)
+        self.assertEquals(new_client_encoding, old_client_encoding)
+
+
 
 if __name__ == "__main__":
     unittest.main()
