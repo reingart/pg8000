@@ -29,6 +29,7 @@
 
 __author__ = "Mathieu Fenniak"
 
+import os
 import socket
 import protocol
 import threading
@@ -531,6 +532,12 @@ class Connection(Cursor):
             password = opts.get("password", user)
             host = opts.get("host", host)
             port = int(opts.get("port", port))
+            if host.startswith("/"):
+                # it specifies Unix-domain communication (see libpq-envars)
+                # (name of the directory in which the socket file is stored)
+                unix_sock= os.path.join(host, ".s.PGSQL.%s" % port)
+                host = None
+                port = None
             ssl = opts.get("sslmode", 'disable') != 'disable'
         try:
             self.c = protocol.Connection(unix_sock=unix_sock, host=host, port=port, socket_timeout=socket_timeout, ssl=ssl)

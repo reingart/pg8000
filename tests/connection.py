@@ -1,5 +1,6 @@
 from __future__ import with_statement
 
+import os
 import unittest
 from pg8000 import dbapi
 from contextlib import closing
@@ -52,7 +53,13 @@ class Tests(unittest.TestCase):
                                  })
 
     def testConnectDSN(self):
-        dsn = "dbname=%(database)s user=%(user)s password=%(password)s host=%(host)s port=%(port)s"
+        dsn = "dbname='%(database)s' user='%(user)s' host='%(host)s' port=%(port)s "
+        if 'password' in db_connect:
+            dsn += "password='%(password)s' "
+        if not 'host' in db_connect:
+            # use unix socket directory and extension (see libpq-envars)
+            db_connect['host'] = os.path.dirname(db_connect['unix_sock'])
+            db_connect['port'] = os.path.splitext(db_connect['unix_sock'])[1][1:]
         dbapi.connect(dsn % db_connect)
         
                                  
