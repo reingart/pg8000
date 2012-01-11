@@ -45,6 +45,9 @@ class Tests(unittest.TestCase):
         self.assertEquals(opts, {'dbname': 'postgres'})
         opts = dbapi.interface.conninfo_parse("dbname=postgres user=mariano password=secret host=localhost port=5432")
         self.assertEquals(opts, {'dbname': 'postgres', 'user': 'mariano', 'password': 'secret', 'host': 'localhost', 'port': '5432'})
+        # test no spaces before/after ' (seem to be a valid libpq syntax)
+        opts = dbapi.interface.conninfo_parse("dbname='postgres'user='mariano'password='secret'host='localhost'port=5432")
+        self.assertEquals(opts, {'dbname': 'postgres', 'user': 'mariano', 'password': 'secret', 'host': 'localhost', 'port': '5432'})
         dsn = r"   user=mariano host  ='saraza\'.com' port= 5433   dbname='my crazy db' password=abra\'cadabra sslmode =  prefer  "
         opts = dbapi.interface.conninfo_parse(dsn)
         self.assertEquals(opts, {'dbname': 'my crazy db',

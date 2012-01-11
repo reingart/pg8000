@@ -45,9 +45,10 @@ def conninfo_parse(conninfo):
     while cp < len(buf):
         # Skip blanks before the parameter name
         c = buf[cp]
-        if c.isspace() and tmp and not quoted_string and pname:
+        if ((c.isspace() and not quoted_string) or (c == "'" and quoted_string)) and tmp and pname:
             options[pname] = tmp
             tmp = pname = ""
+            quoted_string = False
         elif c == "'":
             quoted_string = not quoted_string
         elif c == '\\':
