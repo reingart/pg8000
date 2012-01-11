@@ -29,6 +29,8 @@
 
 __author__ = "Mathieu Fenniak"
 
+__version__ = "1.10"
+
 import datetime
 import time
 import interface
