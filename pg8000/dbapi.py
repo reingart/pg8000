@@ -602,13 +602,10 @@ class ConnectionWrapper(object):
             raise ProgrammingError("tpc_prepare() outside a TPC transaction "
                                    "is not allowed!")
         # Prepare the TPC
-        curs = self.cursor()
-        try:
-            curs.execute("PREPARE TRANSACTION '%s';" % (self.__tpc_xid[1],))
-            self.conn.in_transaction = False
-            self.__tpc_prepared = True
-        finally:
-            curs.close()
+        self.conn.execute("PREPARE TRANSACTION '%s';" % (self.__tpc_xid[1],), 
+                          simple_query=True)
+        self.conn.in_transaction = False
+        self.__tpc_prepared = True
     
     @require_open_connection
     def tpc_commit(self, xid=None):
@@ -632,11 +629,10 @@ class ConnectionWrapper(object):
                 # a two-phase commit:
                 # set the auto-commit mode for TPC commit
                 self.autocommit = True
-                curs = self.cursor()
                 try:
-                    curs.execute("COMMIT PREPARED '%s';" % (tpc_xid[1],))
+                    self.conn.execute("COMMIT PREPARED '%s';" % (tpc_xid[1], ), 
+                                      simple_query=True)
                 finally:
-                    curs.close()
                     # return to previous auto-commit mode
                     self.autocommit = previous_autocommit_mode
             else:
@@ -670,11 +666,10 @@ class ConnectionWrapper(object):
                 # a two-phase rollback
                 # set auto-commit for the TPC rollback
                 self.autocommit = True
-                curs = self.cursor()
                 try:
-                    curs.execute("ROLLBACK PREPARED '%s';" % (tpc_xid[1],))
+                    self.conn.execute("ROLLBACK PREPARED '%s';" % (tpc_xid[1],), 
+                                      simple_query=True)
                 finally:
-                    curs.close()
                     # return to previous auto-commit mode
                     self.autocommit = previous_autocommit_mode
             else:
