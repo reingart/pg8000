@@ -523,7 +523,7 @@ class Cursor(object):
 #
 # @keyparam ssl     Use SSL encryption for TCP/IP socket.  Defaults to False.
 class Connection(Cursor):
-    def __init__(self, dsn="", user=None, host=None, unix_sock=None, port=5432, database=None, password=None, socket_timeout=60, ssl=False):
+    def __init__(self, dsn="", user=None, host=None, unix_sock=None, port=5432, database=None, password=None, socket_timeout=60, ssl=None):
         self._row_desc = None
         if dsn:
             # update connection parameters parsed of the conninfo dsn
@@ -533,13 +533,28 @@ class Connection(Cursor):
             password = opts.get("password", user)
             host = opts.get("host", host)
             port = int(opts.get("port", port))
-            if host.startswith("/"):
-                # it specifies Unix-domain communication (see libpq-envars)
-                # (name of the directory in which the socket file is stored)
-                unix_sock= os.path.join(host, ".s.PGSQL.%s" % port)
-                host = None
-                port = None
-            ssl = opts.get("sslmode", 'disable') != 'disable'
+            if "sslmode" in opts:
+                ssl = opts["sslmode"] != 'disable'
+        # Use default environment values if parameter were not given (libpq)
+        env = os.environ
+        if host is None and unix_sock is None:
+            host = env.get('PGHOST', env.get('PGHOSTADDR', 'localhost'))
+        if port is None and not unix_sock:
+            port = env.get('PGPORT')
+        if database is None and not unix_sock:
+            database = env.get('PGDATABASE')
+        if user is None:
+            user = env.get('PGUSER')
+        if password is None:
+            password = env.get('PGPASSWORD')
+        if ssl is None:
+            ssl = env.get("PGSSLMODE", 'disable') != 'disable'
+        if host and host.startswith("/"):
+            # it specifies Unix-domain communication (see libpq-envars)
+            # (name of the directory in which the socket file is stored)
+            unix_sock= os.path.join(host, ".s.PGSQL.%s" % port)
+            host = None
+            port = None
         try:
             self.c = protocol.Connection(unix_sock=unix_sock, host=host, port=port, socket_timeout=socket_timeout, ssl=ssl)
             self.c.authenticate(user, password=password, database=database)

@@ -64,7 +64,19 @@ class Tests(unittest.TestCase):
             db_connect['host'] = os.path.dirname(db_connect['unix_sock'])
             db_connect['port'] = os.path.splitext(db_connect['unix_sock'])[1][1:]
         dbapi.connect(dsn % db_connect)
-        
+
+    def testConnectEnv(self):
+        import os
+        if not 'host' in db_connect:
+            # use unix socket directory and extension (see libpq-envars)
+            db_connect['host'] = os.path.dirname(db_connect['unix_sock'])
+            db_connect['port'] = os.path.splitext(db_connect['unix_sock'])[1][1:]
+        os.environ['PGHOST'] = db_connect['host']
+        os.environ['PGPORT'] = db_connect['port']
+        os.environ['PGUSER'] = db_connect['user']
+        if 'password' in db_connect:
+            os.environ['PGPASSWORD'] = db_connect['password']
+        dbapi.connect("")
                                  
 if __name__ == "__main__":
     unittest.main()
