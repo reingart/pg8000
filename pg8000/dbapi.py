@@ -510,6 +510,13 @@ class ConnectionWrapper(object):
         finally:
             self.notifies_lock.release()
 
+    
+    def execute(self, query_string):
+        "Send a simple query to the backend, returns a generator (rows)"
+        # Stability: Not part of the DBAPI 2.0 specification.
+        self.conn.execute(query_string, simple_query=True)
+        return self.conn.iterate_tuple()
+
     ##
     # Creates a {@link #CursorWrapper CursorWrapper} object bound to this
     # connection.
@@ -573,7 +580,7 @@ class ConnectionWrapper(object):
     def set_client_encoding(self, encoding=None):
         "Set the client encoding for the current session"
         if encoding:
-            self.conn.execute("SET client_encoding TO '%s';" % (encoding, ), simple_query=True)
+            self.execute("SET client_encoding TO '%s';" % (encoding, ))
         return self.conn.encoding()
 
         
@@ -605,8 +612,7 @@ class ConnectionWrapper(object):
             raise ProgrammingError("tpc_prepare() outside a TPC transaction "
                                    "is not allowed!")
         # Prepare the TPC
-        self.conn.execute("PREPARE TRANSACTION '%s';" % (self.__tpc_xid[1],), 
-                          simple_query=True)
+        self.execute("PREPARE TRANSACTION '%s';" % (self.__tpc_xid[1],))
         self.conn.in_transaction = False
         self.__tpc_prepared = True
     
@@ -633,8 +639,7 @@ class ConnectionWrapper(object):
                 # set the auto-commit mode for TPC commit
                 self.autocommit = True
                 try:
-                    self.conn.execute("COMMIT PREPARED '%s';" % (tpc_xid[1], ), 
-                                      simple_query=True)
+                    self.execute("COMMIT PREPARED '%s';" % (tpc_xid[1], ))
                 finally:
                     # return to previous auto-commit mode
                     self.autocommit = previous_autocommit_mode
@@ -670,8 +675,7 @@ class ConnectionWrapper(object):
                 # set auto-commit for the TPC rollback
                 self.autocommit = True
                 try:
-                    self.conn.execute("ROLLBACK PREPARED '%s';" % (tpc_xid[1],), 
-                                      simple_query=True)
+                    self.execute("ROLLBACK PREPARED '%s';" % (tpc_xid[1],))
                 finally:
                     # return to previous auto-commit mode
                     self.autocommit = previous_autocommit_mode
