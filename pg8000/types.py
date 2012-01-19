@@ -475,8 +475,12 @@ def array_recv(data, **kwargs):
     data = data[12:]
 
     # get type conversion method for typeoid
-    conversion = pg_types[typeoid]["bin_in"]
-
+    try:
+        conversion = pg_types[typeoid]["bin_in"]
+    except:
+        print typeoid
+        raise
+        
     # Read dimension info
     dim_lengths = []
     element_count = 1
@@ -671,12 +675,15 @@ py_array_types = {
 pg_types = {
     16: {"bin_in": boolrecv},
     17: {"bin_in": bytearecv},
+    18: {"txt_in": varcharin}, # char type
     19: {"bin_in": varcharin}, # name type
     20: {"bin_in": int8recv},
     21: {"bin_in": int2recv},
     23: {"bin_in": int4recv, "txt_in": numeric_in},
+    24: {"bin_in": int4recv}, # regproc type
     25: {"bin_in": varcharin, "txt_in": varcharin}, # TEXT type
-    26: {"txt_in": numeric_in}, # oid type
+    26: {"txt_in": numeric_in, "bin_in": int4recv}, # oid type
+    30: {"txt_in": varcharin, }, # OIDVECTOR type
     142: {"bin_in": varcharin, "txt_in": varcharin}, # XML
     194: {"bin_in": varcharin}, # "string representing an internal node tree"
     700: {"bin_in": float4recv},
@@ -693,6 +700,7 @@ pg_types = {
     1016: {"bin_in": array_recv}, # INT8[]
     1021: {"bin_in": array_recv}, # FLOAT4[]
     1022: {"bin_in": array_recv}, # FLOAT8[]
+    1028: {"bin_in": array_recv}, # OID[]
     1042: {"bin_in": varcharin}, # CHAR type
     1043: {"bin_in": varcharin}, # VARCHAR type
     1082: {"txt_in": date_in},

@@ -252,7 +252,20 @@ class Tests(unittest.TestCase):
         new_client_encoding = db2.set_client_encoding(old_client_encoding)
         self.assertEquals(new_client_encoding, old_client_encoding)
 
-
+    def testPgType(self):
+        with closing(db2.cursor()) as c1:
+            c1.execute("SELECT * FROM pg_type;")
+            retval = c1.fetchall()
+            
+    def testOID(self):
+        with closing(db2.cursor()) as c1:
+            c1.execute("SELECT ARRAY[1::oid, 2::oid];")
+            retval = c1.fetchall()
+            self.assertEquals(retval[0][0], [1, 2])
+            c1.execute("SELECT '1 2 3'::oidvector;")
+            retval = c1.fetchall()
+            self.assertEquals(retval[0][0], "1 2 3")
+            
 
 if __name__ == "__main__":
     unittest.main()
