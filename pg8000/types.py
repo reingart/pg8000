@@ -36,6 +36,7 @@ import math
 from errors import (NotSupportedError, ArrayDataParseError, InternalError,
         ArrayContentEmptyError, ArrayContentNotHomogenousError,
         ArrayContentNotSupportedError, ArrayDimensionsNotConsistentError)
+import warnings
 
 try:
     from pytz import utc
@@ -159,7 +160,15 @@ def py_type_info(description):
     type_oid = description['type_oid']
     data = pg_types.get(type_oid)
     if data == None:
-        raise NotSupportedError("type oid %r not mapped to py type" % type_oid)
+        if None in pg_types:
+            # get the default mapping function (text)
+            data = pg_types.get(None)
+            warnings.warn("using default conversion function for oid: %s" % 
+                            type_oid, 
+                            RuntimeWarning)
+        else:
+            raise NotSupportedError("type oid %r not mapped to py type" % 
+                                        type_oid)
     # prefer bin, but go with whatever exists
     if data.get("bin_in"):
         format = 1
@@ -177,7 +186,14 @@ def py_value(v, description, **kwargs):
     format = description['format']
     data = pg_types.get(type_oid)
     if data == None:
-        raise NotSupportedError("type oid %r not supported" % type_oid)
+        if None in pg_types:
+            # get the default mapping function (text)
+            data = pg_types.get(None)
+            warnings.warn("using default conversion function for oid: %s" % 
+                type_oid, 
+                RuntimeWarning)
+        else:
+            raise NotSupportedError("type oid %r not supported" % type_oid)
     if format == 0:
         func = data.get("txt_in")
     elif format == 1:
@@ -743,3 +759,9 @@ def register_type(obj, scope=None):
         raise NotImplementedError("scope must be None (global)")
     pg_types.update(pg_type)
     py_types.update(py_type)
+
+
+def register_default():
+    "Maps default input conversion from PostgreSQL unregistered types"
+    global pg_types
+    pg_types[None] = {"txt_in": varcharin}

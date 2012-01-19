@@ -66,6 +66,26 @@ class Tests(unittest.TestCase):
             self.assertEquals(retval[0][0], u'two')
             self.assertEquals(type(retval[0][0]), MyType)
                 
+    def testDefault(self):
+
+        # register the default conversion function (varcharin)
+        # remember to cast input parameters!
+        pg8000.types.register_default()
+        
+        with closing(db2.cursor()) as c1:
+            try:
+                c1.execute("DROP TYPE mytype;")
+                #c1.execute("DROP TABLE mytable;")
+            except:
+                pass
+            c1.execute("CREATE TYPE mytype AS ENUM ('one', 'two', 'three')")
+            c1.execute("CREATE TEMP TABLE mytable (somedata mytype)")
+            c1.execute("INSERT INTO mytable (somedata) VALUES ('one') RETURNING *", [])
+            retval = c1.fetchall()
+            self.assertEquals(retval[0][0], u'one')
+            c1.execute("INSERT INTO mytable (somedata) VALUES (%s::mytype) RETURNING *", ["two"])
+            retval = c1.fetchall()
+            self.assertEquals(retval[0][0], u'two')
 
 if __name__ == "__main__":
     unittest.main()
