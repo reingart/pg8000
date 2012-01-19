@@ -714,3 +714,32 @@ pg_types = {
     2275: {"bin_in": varcharin}, # cstring
 }
 
+
+def new_type(oids, name, txt_in=None, bin_in=None, 
+                   pyclass=None, txt_out=None, bin_out=None):
+    "Create a new type caster to convert a type between PostgreSQL and Python"
+    # create postgres to python conversion:
+    pg_type = {}
+    for oid in oids:
+        pg_type[oid] = {}
+        if txt_in:
+            pg_type[oid]['txt_in'] = txt_in
+        if bin_in:
+            pg_type[oid]['bin_in'] = bin_in            
+    # create python to postgres conversion
+    py_type = {pyclass: {"typeoid": oid}}
+    if txt_out:
+        py_type[pyclass]['txt_out'] = txt_out
+    if bin_out:
+        py_type[pyclass]['bin_out'] = bin_out
+    return pg_type, py_type
+
+
+def register_type(obj, scope=None):
+    "Maps the conversion of a PostgreSQL type to/from Python (new_type)"
+    global pg_types, py_types
+    pg_type, py_type = obj
+    if scope:
+        raise NotImplementedError("scope must be None (global)")
+    pg_types.update(pg_type)
+    py_types.update(py_type)
