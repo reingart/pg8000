@@ -87,6 +87,21 @@ class Tests(unittest.TestCase):
             retval = c1.fetchall()
             self.assertEquals(retval[0][0], u'two')
 
+    def testGeo(self):
+    
+        # register the default conversion function for geometric types (tuples)
+        # remember to cast input parameters!
+        pg8000.types.register_geo()
+        
+        with closing(db2.cursor()) as c1:
+            c1.execute("SELECT '(10.2,20.3)'::point")
+            rows = c1.fetchall()
+            self.assertEquals(rows[0][0], (10.2, 20.3))
+            c1.execute("SELECT '(10,20)'::point")
+            rows = c1.fetchall()
+            self.assertEquals(rows[0][0], (10, 20))
+
+
 if __name__ == "__main__":
     unittest.main()
 

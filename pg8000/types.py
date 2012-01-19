@@ -465,6 +465,19 @@ def textout(v, client_encoding, **kwargs):
     else:
         return v
 
+def tuplein(data, client_encoding, **kwargs):
+    s = varcharin(data, client_encoding)
+    assert s[0]=="(" and s[-1]==")"
+    r = []
+    for it in s[1:-1].split(","):
+        if it.startswith("'"):
+            r.append(it)
+        elif '.' not in it:
+            r.append(long(it))
+        else:
+            r.append(float(it))
+    return tuple(r)
+
 def byteasend(v, **kwargs):
     return str(v)
 
@@ -763,5 +776,20 @@ def register_type(obj, scope=None):
 
 def register_default():
     "Maps default input conversion from PostgreSQL unregistered types"
+    # use string per default
     global pg_types
     pg_types[None] = {"txt_in": varcharin}
+
+
+def register_geo():
+    "Maps default input conversion from PostgreSQL geometry types"
+    # uses tuples per default
+    global pg_types
+    for name, oid in [("POINTOID", 600), 
+                       ("LSEGOID", 601),
+                       ("PATHOID", 602),
+                       ("BOXOID", 603),
+                       ("POLYGONOID", 604),
+                       ("LINEOID", 628)]:
+        pg_types[oid] = {"txt_in": tuplein}
+        
