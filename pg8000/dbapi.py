@@ -29,6 +29,8 @@
 
 __author__ = "Mathieu Fenniak"
 
+__version__ = "1.10"
+
 import datetime
 import time
 import interface
@@ -236,6 +238,7 @@ def convert_paramstyle(src_style, query, args):
 
     return output_query, tuple(output_args)
 
+    
 def require_open_cursor(fn):
     def _fn(self, *args, **kwargs):
         if self.cursor == None:
@@ -481,6 +484,19 @@ class ConnectionWrapper(object):
         self.notifies = []
         self.notifies_lock = threading.Lock()
         self.conn.NotificationReceived += self._notificationReceived
+        # Two Phase Commit internal attributes:
+        self.__tpc_xid = None
+        self.__tpc_prepared = None
+
+    def set_autocommit(self, state):
+        if self.conn.in_transaction and state and not self.conn.autocommit:
+            warn("enabling autocommit in an open transaction!")
+        self.conn.autocommit = state
+
+    def get_autocommit(self):
+        return self.conn.autocommit
+    
+    autocommit = property(get_autocommit, set_autocommit)
 
     @require_open_connection
     def begin(self):
@@ -493,6 +509,13 @@ class ConnectionWrapper(object):
             self.notifies.append((notice.backend_pid, notice.condition))
         finally:
             self.notifies_lock.release()
+
+    
+    def execute(self, query_string):
+        "Send a simple query to the backend, returns a generator (rows)"
+        # Stability: Not part of the DBAPI 2.0 specification.
+        self.conn.execute(query_string, simple_query=True)
+        return self.conn.iterate_tuple()
 
     ##
     # Creates a {@link #CursorWrapper CursorWrapper} object bound to this
@@ -517,6 +540,9 @@ class ConnectionWrapper(object):
         # database connection entirely, so that no cursors can execute
         # statements on other threads.  Support for that type of lock will
         # be done later.
+        if self.__tpc_xid:
+            raise ProgrammingError("Cannot do a normal commit() inside a "
+                                   "TPC transaction!")
         self.conn.commit()
 
     ##
@@ -526,6 +552,9 @@ class ConnectionWrapper(object):
     @require_open_connection
     def rollback(self):
         # see bug description in commit.
+        if self.__tpc_xid:
+            raise ProgrammingError("Cannot do a normal rollback() inside a "
+                                   "TPC transaction!")
         self.conn.rollback()
 
     ##
@@ -545,6 +574,144 @@ class ConnectionWrapper(object):
     @require_open_connection
     def server_version(self):
         return self.conn.server_version()
+
+    # Stability: psycopg2 compatibility
+    @require_open_connection
+    def set_client_encoding(self, encoding=None):
+        "Set the client encoding for the current session"
+        if encoding:
+            self.execute("SET client_encoding TO '%s';" % (encoding, ))
+        return self.conn.encoding()
+
+        
+    def xid(self,format_id, global_transaction_id, branch_qualifier):
+        """Create a Transaction IDs (only global_transaction_id is used in pg)
+        format_id and branch_qualifier are not used in postgres
+        global_transaction_id may be any string identifier supported by postgres
+        returns a tuple (format_id, global_transaction_id, branch_qualifier)"""
+        return (format_id, global_transaction_id, branch_qualifier)
+
+    @require_open_connection
+    def tpc_begin(self,xid):
+        "Begin a two-phase transaction"
+        # set auto-commit mode to begin a TPC transaction
+        self.autocommit = False
+        # (actually in postgres at this point it is a normal one)
+        if self.conn.in_transaction:
+            warn("tpc_begin() should be called outside a transaction block", 
+                 stacklevel=3)
+        self.conn.begin()
+        # store actual TPC transaction id
+        self.__tpc_xid = xid
+        self.__tpc_prepared = False
+
+    @require_open_connection    
+    def tpc_prepare(self):
+        "Prepare a two-phase transaction"
+        if not self.__tpc_xid:
+            raise ProgrammingError("tpc_prepare() outside a TPC transaction "
+                                   "is not allowed!")
+        # Prepare the TPC
+        self.execute("PREPARE TRANSACTION '%s';" % (self.__tpc_xid[1],))
+        self.conn.in_transaction = False
+        self.__tpc_prepared = True
+    
+    @require_open_connection
+    def tpc_commit(self, xid=None):
+        "Commit a prepared two-phase transaction"
+        try:
+            # save current autocommit status (to be recovered later)
+            previous_autocommit_mode = self.autocommit
+            if not xid:
+                # use current tpc transaction
+                tpc_xid = self.__tpc_xid
+            else:
+                # use a recovered tpc transaction
+                tpc_xid = xid
+                if not xid in self.tpc_recover():
+                    raise ProgrammingError("Requested TPC transaction is not "
+                                           "prepared!")
+            if not tpc_xid:
+                raise ProgrammingError("Cannot tpc_commit() without a TPC "
+                                       "transaction!")
+            if self.__tpc_prepared or (xid != self.__tpc_xid and xid):
+                # a two-phase commit:
+                # set the auto-commit mode for TPC commit
+                self.autocommit = True
+                try:
+                    self.execute("COMMIT PREPARED '%s';" % (tpc_xid[1], ))
+                finally:
+                    # return to previous auto-commit mode
+                    self.autocommit = previous_autocommit_mode
+            else:
+                try:
+                    # a single-phase commit
+                    self.conn.commit()
+                finally:
+                    # return to previous auto-commit mode
+                    self.autocommit = previous_autocommit_mode
+        finally:
+            # transaction is done, clear xid
+            self.__tpc_xid = None
+
+    @require_open_connection
+    def tpc_rollback(self, xid=None):
+        "Commit a prepared two-phase transaction"
+        try:
+            # save current autocommit status (to be recovered later)
+            previous_autocommit_mode = self.autocommit
+            if not xid:
+                # use current tpc transaction
+                tpc_xid = self.__tpc_xid 
+            else:
+                # use a recovered tpc transaction
+                tpc_xid = xid
+                if not xid in self.tpc_recover():
+                    raise ProgrammingError("Requested TPC transaction is not prepared!")
+            if not tpc_xid:
+                raise ProgrammingError("Cannot tpc_rollback() without a TPC prepared transaction!")
+            if self.__tpc_prepared or (xid != self.__tpc_xid and xid):
+                # a two-phase rollback
+                # set auto-commit for the TPC rollback
+                self.autocommit = True
+                try:
+                    self.execute("ROLLBACK PREPARED '%s';" % (tpc_xid[1],))
+                finally:
+                    # return to previous auto-commit mode
+                    self.autocommit = previous_autocommit_mode
+            else:
+                # a single-phase rollback
+                try:
+                    self.conn.rollback()
+                finally:
+                    # return to previous auto-commit mode
+                    self.autocommit = previous_autocommit_mode                  
+        finally:
+            # transaction is done, clear xid
+            self.__tpc_xid = None
+
+    @require_open_connection
+    def tpc_recover(self):
+        "Returns a list of pending transaction IDs"
+        previous_autocommit_mode = self.autocommit 
+        if not self.conn.in_transaction and not self.autocommit:
+            self.autocommit = True
+        elif not self.autocommit:
+            warn("tpc_recover() will open a transaction block", stacklevel=3)
+
+        curs = self.cursor()
+        xids = []
+        try:
+            # query system view that stores open (prepared) TPC transactions 
+            curs.execute("SELECT gid FROM pg_prepared_xacts;");
+            xids.extend([self.xid(0,row[0],'') for row in curs])
+        finally:
+            curs.close()
+            # return to previous auto-commit mode
+            self.autocommit = previous_autocommit_mode
+        # return a list of TPC transaction ids (xid)
+        return xids
+
 
 ##
 # Creates a DBAPI 2.0 compatible interface to a PostgreSQL database.
@@ -583,8 +750,8 @@ class ConnectionWrapper(object):
 # @keyparam ssl     Use SSL encryption for TCP/IP socket.  Defaults to False.
 #
 # @return An instance of {@link #ConnectionWrapper ConnectionWrapper}.
-def connect(user, host=None, unix_sock=None, port=5432, database=None, password=None, socket_timeout=60, ssl=False):
-    return ConnectionWrapper(user=user, host=host,
+def connect(dsn="", user=None, host=None, unix_sock=None, port=5432, database=None, password=None, socket_timeout=60, ssl=False):
+    return ConnectionWrapper(dsn=dsn, user=user, host=host,
             unix_sock=unix_sock, port=port, database=database,
             password=password, socket_timeout=socket_timeout, ssl=ssl)
 

@@ -36,6 +36,7 @@ import math
 from errors import (NotSupportedError, ArrayDataParseError, InternalError,
         ArrayContentEmptyError, ArrayContentNotHomogenousError,
         ArrayContentNotSupportedError, ArrayDimensionsNotConsistentError)
+import warnings
 
 try:
     from pytz import utc
@@ -159,7 +160,15 @@ def py_type_info(description):
     type_oid = description['type_oid']
     data = pg_types.get(type_oid)
     if data == None:
-        raise NotSupportedError("type oid %r not mapped to py type" % type_oid)
+        if None in pg_types:
+            # get the default mapping function (text)
+            data = pg_types.get(None)
+            warnings.warn("using default conversion function for oid: %s" % 
+                            type_oid, 
+                            RuntimeWarning)
+        else:
+            raise NotSupportedError("type oid %r not mapped to py type" % 
+                                        type_oid)
     # prefer bin, but go with whatever exists
     if data.get("bin_in"):
         format = 1
@@ -177,7 +186,14 @@ def py_value(v, description, **kwargs):
     format = description['format']
     data = pg_types.get(type_oid)
     if data == None:
-        raise NotSupportedError("type oid %r not supported" % type_oid)
+        if None in pg_types:
+            # get the default mapping function (text)
+            data = pg_types.get(None)
+            warnings.warn("using default conversion function for oid: %s" % 
+                type_oid, 
+                RuntimeWarning)
+        else:
+            raise NotSupportedError("type oid %r not supported" % type_oid)
     if format == 0:
         func = data.get("txt_in")
     elif format == 1:
@@ -315,21 +331,69 @@ def numeric_recv(data, **kwargs):
         retval *= -1
     return retval
 
-def numeric_send(v, **kwargs):
+DEC_DIGITS = 4
+def numeric_send(d, **kwargs):
+    # This is a very straight port of src/backend/utils/adt/numeric.c set_var_from_str()
+    s = str(d)
+    pos = 0
     sign = 0
-    if v < 0:
-        sign = 16384
-        v *= -1
-    max_weight = decimal.Decimal(int(math.floor(math.log(v) / math.log(10000))))
-    weight = max_weight
-    digits = []
-    while v != 0:
-        digit = int(math.floor(v / (10000 ** weight)))
-        v = v - (digit * (10000 ** weight))
-        weight -= 1
-        digits.append(digit)
-    retval = struct.pack("!hhhh", len(digits), max_weight, sign, 0)
-    retval += struct.pack("!" + ("h" * len(digits)), *digits)
+    if s[0] == '-':
+        sign = 0x4000 # NEG
+        pos=1
+    elif s[0] == '+':
+        sign = 0 # POS
+        pos=1
+    have_dp = False
+    decdigits = [0, 0, 0, 0]
+    dweight = -1
+    dscale = 0
+    for char in s[pos:]:
+        if char.isdigit():
+            decdigits.append(int(char))
+            if not have_dp:
+                dweight += 1
+            else:
+                dscale += 1
+            pos+=1
+        elif char == '.':
+            have_dp = True
+            pos+=1
+        else:
+            break
+
+    if len(s) > pos:
+        char = s[pos]
+        if char == 'e' or char == 'E':
+            pos+=1
+            exponent = int(s[pos:])
+            dweight += exponent
+            dscale -= exponent
+            if dscale < 0: dscale = 0
+
+    if dweight >= 0:
+        weight = (dweight + 1 + DEC_DIGITS - 1) / DEC_DIGITS - 1
+    else:
+        weight = -((-dweight - 1) / DEC_DIGITS + 1)
+    offset = (weight + 1) * DEC_DIGITS - (dweight + 1)
+    ndigits = (len(decdigits)-DEC_DIGITS + offset + DEC_DIGITS - 1) / DEC_DIGITS
+
+    i = DEC_DIGITS - offset
+    decdigits.extend([0, 0, 0])
+    ndigits_ = ndigits
+    digits = ''
+    while ndigits_ > 0:
+        # ifdef DEC_DIGITS == 4
+        digits += struct.pack("!h", ((decdigits[i] * 10 + decdigits[i + 1]) * 10 + decdigits[i + 2]) * 10 + decdigits[i + 3])
+        ndigits_ -= 1
+        i += DEC_DIGITS
+
+    # strip_var()
+    if ndigits == 0:
+        sign = 0x4000 # pos
+        weight = 0
+    # ----------
+
+    retval = struct.pack("!hhhh", ndigits, weight, sign, dscale) + digits
     return retval
 
 def numeric_out(v, **kwargs):
@@ -401,6 +465,19 @@ def textout(v, client_encoding, **kwargs):
     else:
         return v
 
+def tuplein(data, client_encoding, **kwargs):
+    s = varcharin(data, client_encoding)
+    assert s[0]=="(" and s[-1]==")"
+    r = []
+    for it in s[1:-1].split(","):
+        if it.startswith("'"):
+            r.append(it)
+        elif '.' not in it:
+            r.append(long(it))
+        else:
+            r.append(float(it))
+    return tuple(r)
+
 def byteasend(v, **kwargs):
     return str(v)
 
@@ -427,8 +504,12 @@ def array_recv(data, **kwargs):
     data = data[12:]
 
     # get type conversion method for typeoid
-    conversion = pg_types[typeoid]["bin_in"]
-
+    try:
+        conversion = pg_types[typeoid]["bin_in"]
+    except:
+        print typeoid
+        raise
+        
     # Read dimension info
     dim_lengths = []
     element_count = 1
@@ -441,13 +522,14 @@ def array_recv(data, **kwargs):
     # Read all array values
     array_values = []
     for i in range(element_count):
-        element_len, = struct.unpack("!i", data[:4])
-        data = data[4:]
-        if element_len == -1:
-            array_values.append(None)
-        else:
-            array_values.append(conversion(data[:element_len], **kwargs))
-            data = data[element_len:]
+        if len(data):
+            element_len, = struct.unpack("!i", data[:4])
+            data = data[4:]
+            if element_len == -1:
+                array_values.append(None)
+            else:
+                array_values.append(conversion(data[:element_len], **kwargs))
+                data = data[element_len:]
     if data != "":
         raise ArrayDataParseError("unexpected data left over after array read")
 
@@ -622,25 +704,32 @@ py_array_types = {
 pg_types = {
     16: {"bin_in": boolrecv},
     17: {"bin_in": bytearecv},
+    18: {"txt_in": varcharin}, # char type
     19: {"bin_in": varcharin}, # name type
     20: {"bin_in": int8recv},
     21: {"bin_in": int2recv},
-    23: {"bin_in": int4recv},
-    25: {"bin_in": varcharin}, # TEXT type
-    26: {"txt_in": numeric_in}, # oid type
+    23: {"bin_in": int4recv, "txt_in": numeric_in},
+    24: {"bin_in": int4recv}, # regproc type
+    25: {"bin_in": varcharin, "txt_in": varcharin}, # TEXT type
+    26: {"txt_in": numeric_in, "bin_in": int4recv}, # oid type
+    30: {"txt_in": varcharin, }, # OIDVECTOR type
+    142: {"bin_in": varcharin, "txt_in": varcharin}, # XML
+    194: {"bin_in": varcharin}, # "string representing an internal node tree"
     700: {"bin_in": float4recv},
     701: {"bin_in": float8recv},
+    705: {"txt_in": varcharin}, # UNKNOWN
     829: {"txt_in": varcharin}, # MACADDR type
     1000: {"bin_in": array_recv}, # BOOL[]
     1003: {"bin_in": array_recv}, # NAME[]
     1005: {"bin_in": array_recv}, # INT2[]
-    1007: {"bin_in": array_recv}, # INT4[]
+    1007: {"bin_in": array_recv, "txt_in": varcharin}, # INT4[]
     1009: {"bin_in": array_recv}, # TEXT[]
     1014: {"bin_in": array_recv}, # CHAR[]
     1015: {"bin_in": array_recv}, # VARCHAR[]
     1016: {"bin_in": array_recv}, # INT8[]
     1021: {"bin_in": array_recv}, # FLOAT4[]
     1022: {"bin_in": array_recv}, # FLOAT8[]
+    1028: {"bin_in": array_recv}, # OID[]
     1042: {"bin_in": varcharin}, # CHAR type
     1043: {"bin_in": varcharin}, # VARCHAR type
     1082: {"txt_in": date_in},
@@ -654,3 +743,53 @@ pg_types = {
     2275: {"bin_in": varcharin}, # cstring
 }
 
+
+def new_type(oids, name, txt_in=None, bin_in=None, 
+                   pyclass=None, txt_out=None, bin_out=None):
+    "Create a new type caster to convert a type between PostgreSQL and Python"
+    # create postgres to python conversion:
+    pg_type = {}
+    for oid in oids:
+        pg_type[oid] = {}
+        if txt_in:
+            pg_type[oid]['txt_in'] = txt_in
+        if bin_in:
+            pg_type[oid]['bin_in'] = bin_in            
+    # create python to postgres conversion
+    py_type = {pyclass: {"typeoid": oid}}
+    if txt_out:
+        py_type[pyclass]['txt_out'] = txt_out
+    if bin_out:
+        py_type[pyclass]['bin_out'] = bin_out
+    return pg_type, py_type
+
+
+def register_type(obj, scope=None):
+    "Maps the conversion of a PostgreSQL type to/from Python (new_type)"
+    global pg_types, py_types
+    pg_type, py_type = obj
+    if scope:
+        raise NotImplementedError("scope must be None (global)")
+    pg_types.update(pg_type)
+    py_types.update(py_type)
+
+
+def register_default():
+    "Maps default input conversion from PostgreSQL unregistered types"
+    # use string per default
+    global pg_types
+    pg_types[None] = {"txt_in": varcharin}
+
+
+def register_geo():
+    "Maps default input conversion from PostgreSQL geometry types"
+    # uses tuples per default
+    global pg_types
+    for name, oid in [("POINTOID", 600), 
+                       ("LSEGOID", 601),
+                       ("PATHOID", 602),
+                       ("BOXOID", 603),
+                       ("POLYGONOID", 604),
+                       ("LINEOID", 628)]:
+        pg_types[oid] = {"txt_in": tuplein}
+        

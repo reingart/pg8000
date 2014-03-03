@@ -29,10 +29,42 @@
 
 __author__ = "Mathieu Fenniak"
 
+import os
 import socket
 import protocol
 import threading
 from errors import *
+
+def conninfo_parse(conninfo):
+    "Conninfo parser routine based on libpq conninfo_parse"
+    options = {}
+    buf = conninfo + " "
+    tmp = pname = ""
+    quoted_string = False
+    cp = 0
+    while cp < len(buf):
+        # Skip blanks before the parameter name
+        c = buf[cp]
+        if ((c.isspace() and not quoted_string) or (c == "'" and quoted_string)) and tmp and pname:
+            options[pname] = tmp
+            tmp = pname = ""
+            quoted_string = False
+        elif c == "'":
+            quoted_string = not quoted_string
+        elif c == '\\':
+            cp += 1
+            tmp += buf[cp]      
+        elif c == "=":
+            if not tmp:
+                raise RuntimeError("missing parameter name (conninfo:%s)" % cp)
+            pname = tmp
+            tmp = ""
+        elif not c.isspace() or quoted_string:
+            tmp += c
+        cp += 1
+    if quoted_string:
+        raise RuntimeError("unterminated quoted string (conninfo:%s)" % cp)
+    return options
 
 class DataIterator(object):
     def __init__(self, obj, func):
@@ -257,6 +289,64 @@ class PreparedStatement(object):
     def iterate_dict(self):
         return DataIterator(self, PreparedStatement.read_dict)
 
+
+class SimpleStatement(PreparedStatement):
+    "Internal wrapper to Simple Query protocol emulating a PreparedStatement"
+    
+    # This should be used internally only for trivial queries 
+    # (not a true Prepared Statement, in fact it can have multiple statements)
+    # See Simple Query Protocol limitations and trade-offs (send_simple_query)
+    
+    row_cache_size = None
+
+    def __init__(self, connection, statement):
+        if connection == None or connection.c == None:
+            raise InterfaceError("connection not provided")
+        self.c = connection.c
+        self._row_desc = None
+        self._cached_rows = []
+        self._ongoing_row_count = -1
+        self._command_complete = True
+        self.statement = statement
+        self._lock = threading.RLock()
+
+    def close(self):
+        # simple query doesn't have portals
+        pass
+
+    def execute(self, *args, **kwargs):
+        "Run the SQL simple query stataments"
+        self._lock.acquire()
+        try:
+            self._row_desc, cmd_complete, self._cached_rows = \
+                self.c.send_simple_query(self.statement, kwargs.get("stream"))
+            self._command_complete = True
+            self._ongoing_row_count = -1
+            if cmd_complete is not None and cmd_complete.rows is not None:
+                self._ongoing_row_count = cmd_complete.rows
+        finally:
+            self._lock.release()
+
+    def _fill_cache(self):
+        # data rows are already fetched in _cached_rows
+        pass
+
+    def _fetch(self):
+        if not self._row_desc:
+            raise ProgrammingError("no result set")
+        self._lock.acquire()
+        try:
+            if not self._cached_rows:
+                return None
+            row = self._cached_rows.pop(0)
+            return tuple(row)
+        finally:
+            self._lock.release()
+
+    def _get_row_count(self):
+        return self._ongoing_row_count
+
+
 ##
 # The Cursor class allows multiple queries to be performed concurrently with a
 # single PostgreSQL connection.  The Cursor object is implemented internally by
@@ -300,7 +390,14 @@ class Cursor(object):
             raise ConnectionClosedError()
         self.connection._unnamed_prepared_statement_lock.acquire()
         try:
-            self._stmt = PreparedStatement(self.connection, query, statement_name="", *[{"type": type(x), "value": x} for x in args])
+            if kwargs.get("simple_query"):
+                # no arguments and no statement name, 
+                # use PostgreSQL Simple Query Protocol
+                ## print "SimpleQuery:", query
+                self._stmt = SimpleStatement(self.connection, query)
+            else:
+                # use PostgreSQL Extended Query Protocol
+                self._stmt = PreparedStatement(self.connection, query, statement_name="", *[{"type": type(x), "value": x} for x in args])
             self._stmt.execute(*args, **kwargs)
         finally:
             self.connection._unnamed_prepared_statement_lock.release()
@@ -426,8 +523,38 @@ class Cursor(object):
 #
 # @keyparam ssl     Use SSL encryption for TCP/IP socket.  Defaults to False.
 class Connection(Cursor):
-    def __init__(self, user, host=None, unix_sock=None, port=5432, database=None, password=None, socket_timeout=60, ssl=False):
+    def __init__(self, dsn="", user=None, host=None, unix_sock=None, port=5432, database=None, password=None, socket_timeout=60, ssl=None):
         self._row_desc = None
+        if dsn:
+            # update connection parameters parsed of the conninfo dsn
+            opts = conninfo_parse(dsn)
+            database = opts.get("dbname", database)
+            user = opts.get("user", user)
+            password = opts.get("password", user)
+            host = opts.get("host", host)
+            port = int(opts.get("port", port))
+            if "sslmode" in opts:
+                ssl = opts["sslmode"] != 'disable'
+        # Use default environment values if parameter were not given (libpq)
+        env = os.environ
+        if host is None and unix_sock is None:
+            host = env.get('PGHOST', env.get('PGHOSTADDR', 'localhost'))
+        if port is None and not unix_sock:
+            port = env.get('PGPORT')
+        if database is None and not unix_sock:
+            database = env.get('PGDATABASE')
+        if user is None:
+            user = env.get('PGUSER')
+        if password is None:
+            password = env.get('PGPASSWORD')
+        if ssl is None:
+            ssl = env.get("PGSSLMODE", 'disable') != 'disable'
+        if host and host.startswith("/"):
+            # it specifies Unix-domain communication (see libpq-envars)
+            # (name of the directory in which the socket file is stored)
+            unix_sock= os.path.join(host, ".s.PGSQL.%s" % port)
+            host = None
+            port = None
         try:
             self.c = protocol.Connection(unix_sock=unix_sock, host=host, port=port, socket_timeout=socket_timeout, ssl=ssl)
             self.c.authenticate(user, password=password, database=database)
@@ -439,6 +566,7 @@ class Connection(Cursor):
         self._rollback = PreparedStatement(self, "ROLLBACK TRANSACTION")
         self._unnamed_prepared_statement_lock = threading.RLock()
         self.in_transaction = False
+        self.autocommit = False
 
     ##
     # An event handler that is fired when NOTIFY occurs for a notification that
@@ -491,6 +619,8 @@ class Connection(Cursor):
     def begin(self):
         if self.is_closed:
             raise ConnectionClosedError()
+        if self.autocommit:
+            return
         self._begin.execute()
         self.in_transaction = True
 
@@ -547,3 +677,7 @@ class Connection(Cursor):
     # Raises InterfaceError if no version has been reported from the server.
     def server_version(self):
         return self.c.server_version()
+
+    def encoding(self, encoding=None):
+        "Returns the client_encoding as reported from the connected server"
+        return self.c.encoding()

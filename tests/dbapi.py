@@ -3,6 +3,7 @@ from __future__ import with_statement
 import unittest
 import pg8000
 import datetime
+import decimal
 from contextlib import closing, nested
 from .connection_settings import db_connect
 
@@ -189,6 +190,82 @@ class Tests(unittest.TestCase):
                 assert next_f1 > f1
                 f1 = next_f1
 
+    def testEmptyArray(self):
+        with closing(db2.cursor()) as c1:
+            c1.execute("SELECT ARRAY[1,2,3, NULL];")
+            retval = c1.fetchone()
+            self.assert_(len(retval[0]) == 4, 
+                         "%s is not a valid array" % repr(retval[0]))
+            for i, value in enumerate((1, 2, 3, None)):
+                self.assertEquals(value, retval[0][i])
+            c1.execute("SELECT '{}'::text[];")
+            retval = c1.fetchone()
+            self.assert_(len(retval[0]  ) == 0, 
+                         "%s is not an empty array" % repr(retval))
+
+
+    def testDecimalNumeric(self):
+        with closing(db2.cursor()) as c1:
+            # On the other hand, this simple select returns 0.2600:
+            test_dec_val = decimal.Decimal('0.260')
+            c1.execute('SELECT %s', [test_dec_val])
+            retval = c1.fetchone()
+            self.assertEquals(retval[0], test_dec_val)
+            
+            #Table schema: 
+            c1.execute('CREATE TEMP TABLE foo_dec_num1 (a NUMERIC);')
+            
+            # I'd expect that 0.26 is stored in table foo, but psql shows it as 0.
+            c1.execute('INSERT INTO foo_dec_num1 VALUES (%s)', [test_dec_val])
+            db2.commit()
+            c1.execute('SELECT a::TEXT FROM foo_dec_num1')
+            retval = c1.fetchone()
+            print retval
+            self.assertEquals(retval[0], str(test_dec_val))
+
+    def testXML(self):
+        with closing(db2.cursor()) as c1:
+            c1.execute("SELECT '<nothing/>'::xml;")
+            retval = c1.fetchone()
+            self.assertEquals(retval[0], "<nothing/>")
+
+    def testAutocommitCreateDatabase(self):
+        # Forced transactions prevent CREATE DATABASE (needs autocommit)
+        # per dbapi spec, autocommit should be initially disabled
+        self.assertEquals(db2.autocommit, False)
+        db2.autocommit = True
+        db2.rollback()
+        with closing(db2.cursor()) as c1:
+            c1.execute('VACUUM')
+        # this should not throw ProgrammingError: 
+        # ('ERROR', '25001', 
+        #  'VACUUM cannot run inside a transaction block')
+        db2.autocommit = False
+
+    def testSetClientEncoding(self):
+        # get default client encoding
+        old_client_encoding = db2.set_client_encoding()
+        # change it
+        new_client_encoding = db2.set_client_encoding("latin1")
+        self.assertEquals(new_client_encoding, 'iso8859-1')
+        # restore it
+        new_client_encoding = db2.set_client_encoding(old_client_encoding)
+        self.assertEquals(new_client_encoding, old_client_encoding)
+
+    def testPgType(self):
+        with closing(db2.cursor()) as c1:
+            c1.execute("SELECT * FROM pg_type;")
+            retval = c1.fetchall()
+            
+    def testOID(self):
+        with closing(db2.cursor()) as c1:
+            c1.execute("SELECT ARRAY[1::oid, 2::oid];")
+            retval = c1.fetchall()
+            self.assertEquals(retval[0][0], [1, 2])
+            c1.execute("SELECT '1 2 3'::oidvector;")
+            retval = c1.fetchall()
+            self.assertEquals(retval[0][0], "1 2 3")
+            
 
 if __name__ == "__main__":
     unittest.main()

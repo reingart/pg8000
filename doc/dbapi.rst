@@ -45,13 +45,7 @@ DBAPI Properties
             printf format codes, eg. ``WHERE name=%s``
         pyformat
             Python format codes, eg. ``WHERE name=%(paramname)s``
-
-.. attribute:: paramstyle
-
-    String property containing the database version as reported by the server.
-
-    This is an extension to the DBAP specification.
-
+            
 .. attribute:: STRING
 .. attribute:: BINARY
 .. attribute:: NUMBER
@@ -218,6 +212,92 @@ DBAPI Objects
         This function is part of the `DBAPI 2.0 specification
         <http://www.python.org/dev/peps/pep-0249/>`_.
 
+    .. method:: xid(format_id, global_transaction_id, branch_qualifier)
+
+        Create a Transaction IDs (only global_transaction_id is used,
+        format_id and branch_qualifier are not used in postgres)
+        global_transaction_id may be any string identifier supported by postgres
+        returns a tuple (format_id, global_transaction_id, branch_qualifier)
+
+        This function is part of the `DBAPI 2.0 specification
+        <http://www.python.org/dev/peps/pep-0249/>`_ for optional  
+        Two-Phase Commit Extensions.
+
+        .. versionadded:: 1.09
+
+    .. method:: tpc_begin(xid)
+
+        Begin a two-phase transaction with the given Transaction ID xid.
+        Actually, this method issues a normal BEGIN in postgres.
+
+        This function is part of the `DBAPI 2.0 specification
+        <http://www.python.org/dev/peps/pep-0249/>`_ for optional  
+        Two-Phase Commit Extensions.
+
+        .. versionadded:: 1.09
+
+    .. method:: tpc_prepare()
+
+        Performs the first phase of a transaction started with tpc_begin(). 
+        A ProgrammingError is raised if this method is used outside of a TPC 
+        transaction.
+
+        For more information, see `PostgreSQL PREPARE TRANSACTION command
+        <http://www.postgresql.org/docs/current/static/sql-prepare-transaction.html>`_
+
+        This function is part of the `DBAPI 2.0 specification
+        <http://www.python.org/dev/peps/pep-0249/>`_ for optional  
+        Two-Phase Commit Extensions.
+
+        .. versionadded:: 1.09
+
+    .. method:: tpc_commit(xid=None)
+
+        Commits a TPC transaction previously prepared with tpc_prepare().
+        If Transaction ID xid is not given, currently started TPC ID is used.
+
+        A ProgrammingError is raised if this method is used when no TPC 
+        transaction is prepared.
+
+        For more information, see `PostgreSQL COMMIT PREPARED command
+        <http://www.postgresql.org/docs/current/static/sql-commit-prepared.html>`_
+
+        This function is part of the `DBAPI 2.0 specification
+        <http://www.python.org/dev/peps/pep-0249/>`_ for optional  
+        Two-Phase Commit Extensions.
+
+        .. versionadded:: 1.09
+
+    .. method:: tpc_rollback(xid=None)
+
+        Rolls back a TPC transaction previously prepared with tpc_prepare().
+        If Transaction ID xid is not given, currently started TPC ID is used.
+
+        A ProgrammingError is raised if this method is used when no TPC 
+        transaction is prepared.
+
+        For more information, see `PostgreSQL ROLLBACK PREPARED command
+        <http://www.postgresql.org/docs/current/static/sql-rollback-prepared.html>`_
+
+        This function is part of the `DBAPI 2.0 specification
+        <http://www.python.org/dev/peps/pep-0249/>`_ for optional  
+        Two-Phase Commit Extensions.
+
+        .. versionadded:: 1.09
+
+    .. method:: tpc_recover()
+
+        Returns a list of all currently available prepared transaction's xid
+        (listed in the pg_prepared_xacts 
+        `PostgreSQL pg_prepared_xacts system view
+        <http://www.postgresql.org/docs/current/static/view-pg-prepared-xacts.html>`_)
+
+        This function is part of the `DBAPI 2.0 specification
+        <http://www.python.org/dev/peps/pep-0249/>`_ for optional  
+        Two-Phase Commit Extensions.
+
+        .. versionadded:: 1.09
+        
     .. attribute:: notifies
 
         A list of server-side notifications received by this database
@@ -248,6 +328,28 @@ DBAPI Objects
         extension.
 
         .. versionadded:: 1.07
+
+    .. attribute:: server_version
+
+        String property containing the database version as reported by the server.
+
+        This is an extension to the DBAPI specification; it is a pg8000
+        extension.
+
+        .. versionadded:: 1.09
+
+    .. attribute:: autocommit
+        
+        Boolean property to enable or disable the auto-commit feature.
+        Per DBAPI specification, this must be initially off (False), so the 
+        application should call :meth:`~pg8000.dbapi.ConnectionWrapper.commit`.
+        If this attribute is set to True, no enclosing transaction will be 
+        automatically started when executing a database operation. Instead, each 
+        statement will be "committed" implicitly immediately when executed.
+        This behaviour is required by some PostgreSQL commands like CREATE
+        DATABASE or VACUUM that cannot run inside a transaction block.
+
+        .. versionadded:: 1.09
 
     .. attribute:: Error
                    Warning

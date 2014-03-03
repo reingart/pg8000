@@ -367,6 +367,24 @@ class Execute(object):
         return val
 
 
+class SimpleQuery(object):
+    "Requests that the backend execute a Simple Query (SQL string)"
+    
+    def __init__(self, query_string):
+        self.query_string = query_string
+
+    # Byte1('Q') - Identifies the message as an query message.
+    # Int32 -   Message length, including self.
+    # String -  The query string itself.
+    def serialize(self):
+        val = self.query_string + "\x00"
+        val = struct.pack("!i", len(val) + 4) + val
+        val = "Q" + val
+        return val
+
+    def __repr__(self):
+        return "<SimpleQuery qs=%r>" % (self.query_string)
+
 ##
 # Informs the backend that the connection is being closed.
 # <p>
@@ -761,7 +779,7 @@ class CommandComplete(object):
         values = data[:-1].split(" ")
         args = {}
         args['command'] = values[0]
-        if args['command'] in ("INSERT", "DELETE", "UPDATE", "MOVE", "FETCH", "COPY"):
+        if args['command'] in ("INSERT", "DELETE", "UPDATE", "MOVE", "FETCH", "COPY", "SELECT"):
             args['rows'] = int(values[-1])
             if args['command'] == "INSERT":
                 args['oid'] = int(values[1])
@@ -848,6 +866,15 @@ class CopyInResponse(object):
         column_formats = struct.unpack('!' + ('h' * num_cols), data[3:])
         return CopyInResponse(is_binary, column_formats)
 
+    createFromData = staticmethod(createFromData)
+
+
+class EmptyQueryResponse(object):
+    # Byte1('I')
+    # Response to an empty query string. (This substitutes for CommandComplete.)
+    
+    def createFromData(data):
+        return EmptyQueryResponse()
     createFromData = staticmethod(createFromData)
 
 
@@ -975,7 +1002,7 @@ class Connection(object):
 
     def _send(self, msg):
         assert self._sock_lock.locked()
-        #print "_send(%r)" % msg
+        ##print "_send(%r)" % msg
         data = msg.serialize()
         if not isinstance(data, str):
             raise TypeError("bytes data expected")
@@ -1009,7 +1036,7 @@ class Connection(object):
         bytes = self._read_bytes(data_len)
         assert len(bytes) == data_len
         msg = message_types[message_code].createFromData(bytes)
-        #print "_read_message() -> %r" % msg
+        ##print "_read_message() -> %r" % msg
         return msg
 
     def authenticate(self, user, **kwargs):
@@ -1051,7 +1078,9 @@ class Connection(object):
 
         type_info = [types.pg_type_info(x) for x in param_types]
         param_types, param_fc = [x[0] for x in type_info], [x[1] for x in type_info] # zip(*type_info) -- fails on empty arr
-        self._send(Parse(statement, qs.encode(self._client_encoding), param_types))
+        if isinstance(qs, unicode):
+            qs = qs.encode(self._client_encoding)
+        self._send(Parse(statement, qs, param_types))
         self._send(DescribePreparedStatement(statement))
         self._send(Flush())
         self._flush()
@@ -1153,6 +1182,57 @@ class Connection(object):
 
         old_reader.return_value((None, output['msg']))
 
+    @sync_on_error
+    def send_simple_query(self, query_string, copy_stream=None):
+        "Submit a simple query (PQsendQuery)"
+
+        # Only use this for trivial queries, as its use is discouraged because:
+        # CONS:
+        # - Parameter are "injected" (they should be escaped by the app)
+        # - Exesive memory usage (allways returns all rows on completion)
+        # - Inneficient transmission of data in plain text (except for FETCH)
+        # - No Prepared Statement support, each query is parsed every time
+        # - Basic implementation: minimal error recovery and type support
+        # PROS: 
+        # - compact: equivalent to Parse, Bind, Describe, Execute, Close, Sync
+        # - doesn't returns ParseComplete, BindComplete, CloseComplete, NoData
+        # - it supports multiple statements in a single query string
+        # - it is available when the Streaming Replication Protocol is actived
+        # NOTE: this is the protocol used by psycopg2
+        #       (they also uses named cursors to overcome some drawbacks)
+
+        self.verifyState("ready")
+
+        if isinstance(query_string, unicode):
+            query_string = query_string.encode(self._client_encoding)
+
+        self._send(SimpleQuery(query_string))
+        self._flush()
+        
+        # define local storage for message handlers:
+        output = {}
+        rows = []
+
+        # create and add handlers for all the possible messages:
+        reader = MessageReader(self)
+        
+        # read row description but continue processing messages... (return false)
+        reader.add_message(RowDescription, lambda msg, out: out.setdefault('row_desc', msg) and False, output)
+        reader.add_message(DataRow, lambda msg: self._fetch_datarow(msg, rows, output['row_desc']))
+        reader.add_message(EmptyQueryResponse, lambda msg: False)
+        reader.add_message(CommandComplete, lambda msg, out: out.setdefault('complete', msg) and False, output)        
+        reader.add_message(CopyInResponse, self._copy_in_response, copy_stream, reader)
+        reader.add_message(CopyOutResponse, self._copy_out_response, copy_stream, reader)
+        # messages  indicating that we've hit the end of the available data for this command
+        reader.add_message(ReadyForQuery, lambda msg: 1)
+        # process all messages and then raise exceptions (if any)
+        reader.delay_raising_exception = True
+        # start processing the messages from the backend:
+        retval = reader.handle_messages()
+
+        # return a dict with command complete / row description message values
+        return output.get('row_desc'), output.get('complete'), rows
+        
     @sync_on_error
     def fetch_rows(self, portal, row_count, row_desc):
         self.verifyState("ready")
@@ -1260,11 +1340,15 @@ class Connection(object):
     def _onParameterStatusReceived(self, msg):
         if msg.key == "client_encoding":
             self._client_encoding = types.encoding_convert(msg.value)
+            ##print "_onParameterStatusReceived client_encoding", self._client_encoding
         elif msg.key == "integer_datetimes":
             self._integer_datetimes = (msg.value == "on")
         elif msg.key == "server_version":
             self._server_version = msg.value
-
+        else:
+            ##print "_onParameterStatusReceived ", msg.key, msg.value
+            pass
+            
     def handleNoticeResponse(self, msg):
         self.NoticeReceived(msg)
 
@@ -1296,6 +1380,9 @@ class Connection(object):
             raise InterfaceError("Server did not provide server_version parameter.")
         return self._server_version
 
+    def encoding(self):
+        return self._client_encoding
+        
 
 message_types = {
     "N": NoticeResponse,
@@ -1312,6 +1399,7 @@ message_types = {
     "3": CloseComplete,
     "s": PortalSuspended,
     "n": NoData,
+    "I": EmptyQueryResponse,
     "t": ParameterDescription,
     "A": NotificationResponse,
     "c": CopyDone,

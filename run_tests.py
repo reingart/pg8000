@@ -12,6 +12,8 @@ from tests.pg8000_dbapi20 import Tests as Dbapi20Tests
 from tests.error_recovery import Tests as ErrorRecoveryTests
 from tests.typeobjects import Tests as TypeObjectTests
 from tests.copy import Tests as CopyTests
+from tests.tpc import TwoPhaseTests
+from tests.types import Tests as TypeTests
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,6 @@
 from __future__ import with_statement
 
+import os
 import unittest
 from pg8000 import dbapi
 from contextlib import closing
@@ -37,6 +38,46 @@ class Tests(unittest.TestCase):
         with closing(dbapi.connect(**db_connect)) as db:
             self.assertRegexpMatches(db.server_version, r'\d{1,2}\.\d(\.\d)?')
 
+    def testConnInfo(self):
+        opts = dbapi.interface.conninfo_parse("   ")
+        self.assertEquals(opts, {})
+        opts = dbapi.interface.conninfo_parse("dbname = postgres")
+        self.assertEquals(opts, {'dbname': 'postgres'})
+        opts = dbapi.interface.conninfo_parse("dbname=postgres user=mariano password=secret host=localhost port=5432")
+        self.assertEquals(opts, {'dbname': 'postgres', 'user': 'mariano', 'password': 'secret', 'host': 'localhost', 'port': '5432'})
+        # test no spaces before/after ' (seem to be a valid libpq syntax)
+        opts = dbapi.interface.conninfo_parse("dbname='postgres'user='mariano'password='secret'host='localhost'port=5432")
+        self.assertEquals(opts, {'dbname': 'postgres', 'user': 'mariano', 'password': 'secret', 'host': 'localhost', 'port': '5432'})
+        dsn = r"   user=mariano host  ='saraza\'.com' port= 5433   dbname='my crazy db' password=abra\'cadabra sslmode =  prefer  "
+        opts = dbapi.interface.conninfo_parse(dsn)
+        self.assertEquals(opts, {'dbname': 'my crazy db',
+                'user': 'mariano', 'password': "abra'cadabra",
+                'host': "saraza'.com", 'port': "5433", 'sslmode': 'prefer'
+                                 })
+
+    def testConnectDSN(self):
+        dsn = "dbname='%(database)s' user='%(user)s' host='%(host)s' port=%(port)s "
+        if 'password' in db_connect:
+            dsn += "password='%(password)s' "
+        if not 'host' in db_connect:
+            # use unix socket directory and extension (see libpq-envars)
+            db_connect['host'] = os.path.dirname(db_connect['unix_sock'])
+            db_connect['port'] = os.path.splitext(db_connect['unix_sock'])[1][1:]
+        dbapi.connect(dsn % db_connect)
+
+    def testConnectEnv(self):
+        import os
+        if not 'host' in db_connect:
+            # use unix socket directory and extension (see libpq-envars)
+            db_connect['host'] = os.path.dirname(db_connect['unix_sock'])
+            db_connect['port'] = os.path.splitext(db_connect['unix_sock'])[1][1:]
+        os.environ['PGHOST'] = db_connect['host']
+        os.environ['PGPORT'] = db_connect['port']
+        os.environ['PGUSER'] = db_connect['user']
+        if 'password' in db_connect:
+            os.environ['PGPASSWORD'] = db_connect['password']
+        dbapi.connect("")
+                                 
 if __name__ == "__main__":
     unittest.main()
 

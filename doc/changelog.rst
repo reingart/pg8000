@@ -1,6 +1,56 @@
 Release History
 ================
 
+Version 1.09, 2012-01-03
+------------------------
+
+- Added Two Phase Commit support, methods: 
+  :meth:`~pg8000.dbapi.ConnectionWrapper.xid`, 
+  :meth:`~pg8000.dbapi.ConnectionWrapper.tpc_begin`,
+  :meth:`~pg8000.dbapi.ConnectionWrapper.tpc_prepare`,
+  :meth:`~pg8000.dbapi.ConnectionWrapper.tpc_commit`,
+  :meth:`~pg8000.dbapi.ConnectionWrapper.tpc_rollback`, and 
+  :meth:`~pg8000.dbapi.ConnectionWrapper.tpc_recover`, based on prior TPC 
+  connection wrapper for psycopg2 developed originally for 
+  `pyreplica <http://pgfoundry.org/projects/pyreplica/>`_
+  
+- Added :attr:`~pg8000.dbapi.ConnectionWrapper.autocommit` attribute to avoid
+  to send a BEGIN automatically. This is needed for some commands (e.g. CREATE 
+  DATABASE, VACUUM...) that require to be run outside any transaction.
+  Thanks funkybob for the original patch (adapted from a method to a property 
+  to be compatible with other python connectors)
+
+- Fixed NUMERIC representation issue (truncation on string conversion).
+  Thanks zeha for the report and patch.
+
+- Fixed "Empty array issue" that raised an exception when SELECTing an empty
+  array field (with any primitive type into).
+  Thanks franklx for the original patch (modified to return a true empty list)
+
+- Fixed unicode issue in textout that caused an exception when using PostgreSQL 
+  errors in non-English Locale and, in some cases, when using non ASCII chars.
+  Now, the text is encoded correctly using the client_encoding.
+
+- Added :attr:`~pg8000.dbapi.ConnectionWrapper.server_version` attribute as 
+  reported by the backend.
+  Thanks Ulrich Petri for the patch, docs and test case.
+
+- Added OID 194 mapping for "string representing an internal node tree" 
+  to support sqlalchemy introspection with PostgreSQL 9.1.
+  Thanks dave42 for the original patch.
+
+- Added OID 142 mapping for "xml" type basic support.
+  Thanks dahilia for the report.
+
+- Fixed issue with python 2.5 missing ssl (no ssl support if package is not
+  installed)
+
+- Added basic automatic test connection setup (using loged-in username)
+
+- NOTE: this fork is maintained by Mariano Reingart at 
+  `pg8000.googlecode.com <http://code.google.com/p/pg8000>`_
+  Thanks to Mathieu Fenniak for the original version.
+
 Version 1.08, 2010-06-08
 ------------------------
 

@@ -1,3 +1,4 @@
+﻿# -*- coding: utf-8 -*-
 from __future__ import with_statement
 
 import unittest
@@ -127,6 +128,12 @@ class Tests(unittest.TestCase):
         with closing(db.cursor()) as cursor:
             cursor.execute(u"CREATE TEMPORARY TABLE \u043c\u0435\u0441\u0442\u043e (\u0438\u043c\u044f VARCHAR(50), \u0430\u0434\u0440\u0435\u0441 VARCHAR(250))")
 
+    def testNonUnicodeQuery(self):
+        with closing(db.cursor()) as cursor:
+            cursor.execute("SELECT 'ñ'")
+            self.assertEqual(cursor.fetchone()[0], u'ñ')
+            cursor.execute(u"SELECT 'ñ'")
+            self.assertEqual(cursor.fetchone()[0], u'ñ')
 
 if __name__ == "__main__":
     unittest.main()
